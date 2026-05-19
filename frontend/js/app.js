@@ -9,6 +9,7 @@ const PLATFORM_NAMES = {
     douyin: '抖音', bilibili: 'B站', weibo: '微博',
     xiaohongshu: '小红书', tiktok: 'TikTok', youtube: 'YouTube',
     instagram: 'Instagram', twitter: 'Twitter/X', xigua: '西瓜视频',
+    wechat_channels: '微信视频号', direct: '直接链接',
 };
 
 // ─── DOM ───────────────────────────────────────────
@@ -313,7 +314,7 @@ async function handleDownload() {
     try {
         // 优先使用 yt-dlp 前缀（yt:// / tt:// / bl://）进行下载
         const rawUrl = currentVideoData.video_url || '';
-        const videoUrl = (rawUrl.startsWith('yt://') || rawUrl.startsWith('tt://') || rawUrl.startsWith('bl://'))
+        const videoUrl = (rawUrl.startsWith('yt://') || rawUrl.startsWith('tt://') || rawUrl.startsWith('bl://') || rawUrl.startsWith('wx://'))
             ? rawUrl
             : (currentVideoData.video_url_no_watermark || rawUrl);
         const title = (currentVideoData.title || 'video').substring(0, 50);
@@ -545,6 +546,7 @@ function getReferer(platform) {
         xiaohongshu: 'https://www.xiaohongshu.com/', tiktok: 'https://www.tiktok.com/',
         youtube: 'https://www.youtube.com/', instagram: 'https://www.instagram.com/',
         twitter: 'https://x.com/', xigua: 'https://www.ixigua.com/',
+        wechat_channels: 'https://channels.weixin.qq.com/',
     };
     return map[platform] || 'https://www.douyin.com/';
 }
@@ -590,7 +592,7 @@ function renderBatchItem(result) {
     div.className = 'batch-item';
     if (result.success && result.data) {
         const d = result.data;
-        const vUrl = (d.video_url?.startsWith('yt://') || d.video_url?.startsWith('tt://') || d.video_url?.startsWith('bl://'))
+        const vUrl = (d.video_url?.startsWith('yt://') || d.video_url?.startsWith('tt://') || d.video_url?.startsWith('bl://') || d.video_url?.startsWith('wx://'))
             ? d.video_url : (d.video_url_no_watermark || d.video_url);
         const pName = PLATFORM_NAMES[d.platform] || d.platform || '';
         div.innerHTML = `
@@ -622,7 +624,7 @@ async function loadHistory() {
         history.forEach((item) => {
             const div = document.createElement('div');
             div.className = 'history-item';
-            const vUrl = (item.video_url?.startsWith('yt://') || item.video_url?.startsWith('tt://') || item.video_url?.startsWith('bl://'))
+            const vUrl = (item.video_url?.startsWith('yt://') || item.video_url?.startsWith('tt://') || item.video_url?.startsWith('bl://') || item.video_url?.startsWith('wx://'))
                 ? item.video_url : (item.video_url_no_watermark || item.video_url);
             const pName = PLATFORM_NAMES[item.platform] || item.platform || '';
             div.innerHTML = `

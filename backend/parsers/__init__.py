@@ -1,6 +1,6 @@
 """
 多平台视频解析模块 - 统一入口
-支持：抖音、快手、B站、微博、小红书、TikTok、YouTube、Instagram、Twitter/X、西瓜视频
+支持：抖音、快手、B站、微博、小红书、TikTok、YouTube、Instagram、Twitter/X、西瓜视频、微信视频号
 """
 
 import time
@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, List
 
 from ._utils import _extract_url
 
-from . import douyin, bilibili, weibo, xiaohongshu, tiktok, youtube, instagram, twitter, xigua
+from . import douyin, bilibili, weibo, xiaohongshu, tiktok, youtube, instagram, twitter, xigua, wechat_channels
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ PLATFORM_MAP = {
     "instagram": (instagram.DOMAINS, instagram.parse),
     "twitter": (twitter.DOMAINS, twitter.parse),
     "xigua": (xigua.DOMAINS, xigua.parse),
+    "wechat_channels": (wechat_channels.DOMAINS, wechat_channels.parse),
 }
 
 

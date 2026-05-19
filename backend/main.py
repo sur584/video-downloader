@@ -92,6 +92,7 @@ async def supported_platforms():
         {"id": "instagram", "name": "Instagram", "domains": ["instagram.com"]},
         {"id": "twitter", "name": "Twitter/X", "domains": ["twitter.com", "x.com", "t.co"]},
         {"id": "xigua", "name": "西瓜视频", "domains": ["ixigua.com"]},
+        {"id": "wechat_channels", "name": "微信视频号", "domains": ["channels.weixin.qq.com"]},
     ]}
 
 
@@ -99,13 +100,42 @@ async def supported_platforms():
 async def parse_video(req: ParseRequest):
     """解析视频链接（自动识别平台）"""
     from urllib.parse import urlparse as _urlparse
+    from parsers.wechat_channels import parse_video_info
+    from parsers._utils import _ok, _make_info
+
     # 从输入文本中提取 URL（支持粘贴带文字的分享文本）
     raw = req.url.strip()
+
+    # 先尝试作为 JSON 解析（微信视频号等需要粘贴 JSON 数据）
+    if raw.startswith("{") or raw.startswith("["):
+        try:
+            result = parse_video_info(raw)
+            if result["success"] and result["data"]:
+                _add_to_history(result["data"])
+            return result
+        except Exception:
+            pass
+
+    # 尝试提取 URL
     extracted = _extract_url(raw)
     url = extracted or raw
+
+    # 检查是否是视频直链（mp4/m3u8 等）
+    if url.startswith("http") and ("mp4" in url or "m3u8" in url or "video" in url):
+        result = _ok(_make_info(
+            id="direct_video",
+            platform="direct",
+            title="直接链接",
+            video_url=url,
+            video_url_no_watermark=url,
+        ))
+        if result["success"] and result["data"]:
+            _add_to_history(result["data"])
+        return result
+
     parsed = _urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise HTTPException(status_code=400, detail="仅支持 http/https 链接")
+        raise HTTPException(status_code=400, detail="仅支持 http/https 链接或视频信息 JSON")
     if not _is_safe_url(url):
         raise HTTPException(status_code=403, detail="不允许访问该地址")
     result = await parse_link(url)
@@ -238,6 +268,51 @@ async def download_video(
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"{platform_name} 下载失败: {str(e)[:200]}")
+
+    # 微信视频号加密视频下载（wx:// 前缀）
+    if video_url.startswith("wx://"):
+        # 格式: wx://video_url|decrypt_key
+        parts = video_url[5:].split("|", 1)
+        actual_url = parts[0]
+        decrypt_key = parts[1] if len(parts) > 1 else None
+
+        filepath = DOWNLOAD_DIR / f"{safe_title}.mp4"
+
+        if _is_valid_video(filepath):
+            return FileResponse(path=str(filepath), filename=f"{safe_title}.mp4", media_type="video/mp4")
+
+        if filepath.exists():
+            filepath.unlink()
+
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://channels.weixin.qq.com/",
+            }
+            async with httpx.AsyncClient(timeout=120, verify=False, follow_redirects=True) as client:
+                resp = await client.get(actual_url, headers=headers)
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=502, detail=f"微信视频下载失败 (HTTP {resp.status_code})")
+
+                content = resp.content
+
+                # 如果有解密密钥，需要解密（ISAAC 流密码）
+                if decrypt_key:
+                    try:
+                        from .decrypt import decrypt_isaac
+                        content = decrypt_isaac(content, int(decrypt_key))
+                    except Exception as e:
+                        logger.warning(f"视频解密失败: {e}")
+
+                filepath.write_bytes(content)
+
+            return FileResponse(path=str(filepath), filename=f"{safe_title}.mp4", media_type="video/mp4")
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="下载超时")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"微信视频下载失败: {str(e)}")
 
     filename = f"{safe_title}.mp4"
     filepath = DOWNLOAD_DIR / filename
