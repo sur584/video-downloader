@@ -311,13 +311,14 @@ async function handleDownload() {
     progressText.textContent = '0%';
 
     try {
-        // 优先使用 yt-dlp 前缀（yt:// / tt://）进行下载
+        // 优先使用 yt-dlp 前缀（yt:// / tt:// / bl://）进行下载
         const rawUrl = currentVideoData.video_url || '';
-        const videoUrl = (rawUrl.startsWith('yt://') || rawUrl.startsWith('tt://'))
+        const videoUrl = (rawUrl.startsWith('yt://') || rawUrl.startsWith('tt://') || rawUrl.startsWith('bl://'))
             ? rawUrl
             : (currentVideoData.video_url_no_watermark || rawUrl);
         const title = (currentVideoData.title || 'video').substring(0, 50);
-        const resp = await fetch(`${API_BASE}/api/download?video_url=${encodeURIComponent(videoUrl)}&title=${encodeURIComponent(title)}`);
+        const ref = getReferer(currentVideoData.platform);
+        const resp = await fetch(`${API_BASE}/api/download?video_url=${encodeURIComponent(videoUrl)}&title=${encodeURIComponent(title)}&referer=${encodeURIComponent(ref)}`);
 
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -505,6 +506,18 @@ function handlePreview() {
         return;
     }
 
+    // B站 使用 iframe 嵌入播放
+    if (platform === 'bilibili') {
+        const vid = currentVideoData.id;
+        const embedUrl = `https://player.bilibili.com/player.html?bvid=${vid}&autoplay=1`;
+        previewVideo.style.display = 'none';
+        previewFallback.style.display = 'block';
+        previewFallback.innerHTML = `<iframe src="${embedUrl}" style="width:100%;height:100%;min-height:500px;border:none;border-radius:8px" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+        previewModal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        return;
+    }
+
     // Instagram、Twitter 在新窗口打开
     if (['instagram', 'twitter'].includes(platform)) {
         previewVideo.style.display = 'none';
@@ -577,7 +590,7 @@ function renderBatchItem(result) {
     div.className = 'batch-item';
     if (result.success && result.data) {
         const d = result.data;
-        const vUrl = (d.video_url?.startsWith('yt://') || d.video_url?.startsWith('tt://'))
+        const vUrl = (d.video_url?.startsWith('yt://') || d.video_url?.startsWith('tt://') || d.video_url?.startsWith('bl://'))
             ? d.video_url : (d.video_url_no_watermark || d.video_url);
         const pName = PLATFORM_NAMES[d.platform] || d.platform || '';
         div.innerHTML = `
@@ -588,7 +601,7 @@ function renderBatchItem(result) {
             </div>
             <span class="batch-item-status success">成功</span>
             <div class="batch-item-actions">
-                <button class="btn btn-primary btn-sm js-download" data-url="${escAttr(vUrl)}" data-title="${escAttr(d.title)}">⬇ 下载</button>
+                <button class="btn btn-primary btn-sm js-download" data-url="${escAttr(vUrl)}" data-title="${escAttr(d.title)}" data-platform="${escAttr(d.platform)}">⬇ 下载</button>
                 <button class="btn btn-ghost btn-sm js-copy" data-url="${escAttr(vUrl)}">🔗</button>
             </div>`;
     } else {
@@ -609,7 +622,7 @@ async function loadHistory() {
         history.forEach((item) => {
             const div = document.createElement('div');
             div.className = 'history-item';
-            const vUrl = (item.video_url?.startsWith('yt://') || item.video_url?.startsWith('tt://'))
+            const vUrl = (item.video_url?.startsWith('yt://') || item.video_url?.startsWith('tt://') || item.video_url?.startsWith('bl://'))
                 ? item.video_url : (item.video_url_no_watermark || item.video_url);
             const pName = PLATFORM_NAMES[item.platform] || item.platform || '';
             div.innerHTML = `
@@ -619,7 +632,7 @@ async function loadHistory() {
                     <div class="history-meta">${pName} · ${esc(item.author)} · ${item.parse_time || ''}</div>
                 </div>
                 <div class="history-actions">
-                    <button class="btn btn-primary btn-sm js-download" data-url="${escAttr(vUrl)}" data-title="${escAttr(item.title)}">⬇</button>
+                    <button class="btn btn-primary btn-sm js-download" data-url="${escAttr(vUrl)}" data-title="${escAttr(item.title)}" data-platform="${escAttr(item.platform)}">⬇</button>
                     <button class="btn btn-ghost btn-sm js-copy" data-url="${escAttr(vUrl)}">🔗</button>
                     <button class="history-delete js-delete-history" data-id="${item.id}" title="删除">✕</button>
                 </div>`;
@@ -647,7 +660,7 @@ async function handleClearHistory() {
 // ─── 事件委托 ────────────────────────────────────
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('.js-download');
-    if (btn) { doDownload(btn.dataset.url, btn.dataset.title); return; }
+    if (btn) { doDownload(btn.dataset.url, btn.dataset.title, btn.dataset.platform); return; }
     const copyBtn = e.target.closest('.js-copy');
     if (copyBtn) {
         navigator.clipboard.writeText(copyBtn.dataset.url).then(
@@ -689,9 +702,10 @@ document.addEventListener('click', (e) => {
     }
 });
 
-async function doDownload(videoUrl, title) {
+async function doDownload(videoUrl, title, platform) {
     try {
-        const resp = await fetch(`${API_BASE}/api/download?video_url=${encodeURIComponent(videoUrl)}&title=${encodeURIComponent(title || 'video')}`);
+        const ref = getReferer(platform || '');
+        const resp = await fetch(`${API_BASE}/api/download?video_url=${encodeURIComponent(videoUrl)}&title=${encodeURIComponent(title || 'video')}&referer=${encodeURIComponent(ref)}`);
         if (!resp.ok) throw new Error('下载失败');
         const blob = await resp.blob();
         const a = document.createElement('a');

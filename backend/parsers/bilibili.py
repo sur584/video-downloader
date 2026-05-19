@@ -54,6 +54,7 @@ async def parse(url: str) -> Dict[str, Any]:
     owner = vdata.get("owner", {})
     pic = vdata.get("pic", "")
 
+    # B站使用 bl:// 前缀，下载时走 yt-dlp（CDN 防盗链严格，直接下载容易 403）
     return _ok(_make_info(
         id=bvid, platform="bilibili",
         title=vdata.get("title", "") or "无标题",
@@ -61,7 +62,7 @@ async def parse(url: str) -> Dict[str, Any]:
         author_avatar=owner.get("face", ""),
         cover=pic if pic.startswith("http") else f"https:{pic}" if pic.startswith("//") else pic,
         duration=vdata.get("duration", 0),
-        video_url=video_url,
+        video_url=f"bl://{bvid}",
         video_url_no_watermark=video_url,
         create_time=vdata.get("pubdate", 0),
         digg_count=stat.get("like", 0),

@@ -171,12 +171,13 @@ async def proxy_video(video_url: str = Query(...), referer: str = Query("https:/
 async def download_video(
     video_url: str = Query(..., description="视频直链"),
     title: str = Query("video", description="保存文件名"),
+    referer: str = Query("https://www.douyin.com/", description="Referer"),
 ):
     """下载视频文件"""
     if not video_url:
         raise HTTPException(status_code=400, detail="视频 URL 不能为空")
-    # yt-dlp 前缀（yt:// / tt://）跳过 URL 安全检查，因为它们不直接 fetch
-    if not (video_url.startswith("yt://") or video_url.startswith("tt://")):
+    # yt-dlp 前缀（yt:// / tt:// / bl://）跳过 URL 安全检查，因为它们不直接 fetch
+    if not (video_url.startswith("yt://") or video_url.startswith("tt://") or video_url.startswith("bl://")):
         if not _is_safe_url(video_url):
             raise HTTPException(status_code=403, detail="不允许访问该地址")
 
@@ -190,12 +191,20 @@ async def download_video(
             header = f.read(16)
         return b"ftyp" in header or b"skip" in header
 
-    # yt-dlp 下载（YouTube / TikTok 等需要特殊处理的平台）
-    if video_url.startswith("yt://") or video_url.startswith("tt://"):
+    # yt-dlp 下载（YouTube / TikTok / B站 等需要特殊处理的平台）
+    if video_url.startswith("yt://") or video_url.startswith("tt://") or video_url.startswith("bl://"):
         is_youtube = video_url.startswith("yt://")
-        vid = video_url[5:]  # skip "yt://" or "tt://"
-        page_url = f"https://www.youtube.com/watch?v={vid}" if is_youtube else f"https://www.tiktok.com/@/video/{vid}"
-        platform_name = "YouTube" if is_youtube else "TikTok"
+        is_bilibili = video_url.startswith("bl://")
+        vid = video_url[5:]  # skip "yt://" / "tt://" / "bl://"
+        if is_youtube:
+            page_url = f"https://www.youtube.com/watch?v={vid}"
+            platform_name = "YouTube"
+        elif is_bilibili:
+            page_url = f"https://www.bilibili.com/video/{vid}"
+            platform_name = "B站"
+        else:
+            page_url = f"https://www.tiktok.com/@/video/{vid}"
+            platform_name = "TikTok"
         filepath = DOWNLOAD_DIR / f"{safe_title}.mp4"
 
         if _is_valid_video(filepath):
@@ -239,7 +248,7 @@ async def download_video(
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://www.douyin.com/",
+            "Referer": referer,
         }
         async with httpx.AsyncClient(timeout=120, verify=False, follow_redirects=True) as client:
             resp = await client.get(video_url, headers=headers)
